@@ -1,0 +1,327 @@
+#!/usr/bin/env jruby
+
+# Ahmet Cetinkaya - 2020
+
+# This file is part of mouseovercolor.
+
+# mouseovercolor is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# mouseovercolor is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with mouseovercolor.  If not, see <http://www.gnu.org/licenses/>.
+
+include Java
+
+import java.awt.BorderLayout
+import java.awt.Color
+import java.awt.MouseInfo
+import java.awt.Robot
+import java.awt.Toolkit
+import java.awt.datatransfer.Clipboard
+import java.awt.datatransfer.StringSelection
+import java.awt.event.KeyEvent
+import java.awt.event.KeyListener
+import java.awt.event.WindowFocusListener
+import javax.swing.BorderFactory
+import javax.swing.JFrame
+import javax.swing.JLabel
+import javax.swing.SwingConstants
+
+require "thread"
+
+class MOCColor
+  def initialize(r, g, b)
+    rgb = [r, g, b]
+
+    r1 = r / 255r
+    g1 = g / 255r
+    b1 = b / 255r
+
+    xmax = [r1, g1, b1].max
+    v = xmax
+    v100 = (v * 100).to_i % 101
+
+    xmin = [r1, g1, b1].min
+    c = xmax - xmin
+    l = (xmax + xmin) / 2r
+    l100 = (l * 100).to_i % 101
+
+    h = 0
+    if c != 0
+      h = 60 * (g1 - b1) / (c / 1r) if v == r1
+      h = 60 * (2 + (b1 - r1) / (c / 1r)) if v == g1
+      h = 60 * (4 + (r1 - g1) / (c / 1r)) if v == b1
+    end
+    h360 = h.to_i % 361
+
+    sv = 0
+    sv = c / (v / 1r) if v != 0
+    sv100 = (sv * 100).to_i % 101
+
+    hsv = [h360, sv100, v100] # HSV
+
+    sl = 0
+    sl = 2 * (v - l) / ((1 - (2*l - 1).abs) / 1r) if l != 0 and l != 1
+    sl100 = (sl * 100).to_i % 101
+
+    hsl = [h360, sl100, l100] # HSL
+
+    w = xmin
+    bb = 1 - xmax
+    w100 = (w * 100).to_i % 101
+    bb100 = (bb * 100).to_i % 101
+
+    hwb = [h360, w100, bb100] # HWB
+
+    k = 1 - xmax
+    k100 = (k * 100).to_i % 101
+    cc = 0
+    cc = (1 - r1 - k) / ((1 - k) / 1r) if k != 1
+    cc100 = (cc * 100).to_i % 101
+    m = 0
+    m = (1 - g1 - k) / ((1 - k) / 1r) if k != 1
+    m100 = (m * 100).to_i % 101
+    y = 0
+    y = (1 - b1 - k) / ((1 - k) / 1r) if k != 1
+    y100 = (y * 100).to_i % 101
+
+    cmyk = [cc100, m100, y100, k100] # CMYK
+
+    index = h360 / 60
+    rem = h360 % 60
+    letter = ["R", "Y", "G", "C", "B", "M"][index]
+    code = (100 * rem / 60r).to_i % 100
+    ncol = ["#{letter}#{code}", w100, bb100] # NCol
+
+
+    rstr = r.to_s(16).rjust(2, "0")
+    gstr = g.to_s(16).rjust(2, "0")
+    bstr = b.to_s(16).rjust(2, "0")
+    hex = "##{rstr}#{gstr}#{bstr}"
+    @colors = {"rgb" => rgb,
+               "hex" => hex,
+               "hsl" => hsl,
+               "hwb" => hwb,
+               "cmyk" => cmyk,
+               "ncol" => ncol,
+               "hsv" => hsv}
+
+    @colors_for_html = {"rgb" => "rgb(#{rgb.join(", ")})",
+                        "hex" => hex,
+                        "hsl" => "hsl(#{hsl[0]}, #{hsl[1]}%, #{hsl[2]}%)",
+                        "hwb" => "hwb(#{hwb[0]}, #{hwb[1]}%, #{hwb[2]}%)",
+                        "cmyk" => "cmyk(#{cmyk.map{|e| e.to_s + '%'}.join(", ")})",
+                        "ncol" => "#{ncol[0]}, #{ncol[1]}%, #{ncol[2]}%",
+                        "hsv" => "#{hsv[0]}, #{hsv[1]}%, #{hsv[2]}%"}
+  end
+
+  def get_color_in_representation(representation)
+    @colors[representation]
+  end
+
+  def get_color_text(representation, for_html=false)
+    if for_html
+      @colors_for_html[representation]
+    else
+      [@colors[representation]].flatten.join(", ") # hex is not array, so this helps making it array first
+    end
+  end
+end
+
+class MOCWindowFocusListener
+  include WindowFocusListener
+  def initialize(frame)
+    @frame = frame
+  end
+
+  def windowLostFocus(e)
+    @frame.focus_lost
+  end
+
+  def windowGainedFocus(e)
+  end
+end
+
+class MOCKeyListener
+  include KeyListener
+  def initialize(frame)
+    @frame = frame
+  end
+
+  def keyPressed(e)
+  end
+
+  def keyTyped(e)
+  end
+
+  def keyReleased(e)
+    if e.getKeyCode == KeyEvent::VK_ESCAPE
+      @frame.focus_lost
+    end
+
+    if e.getKeyCode == KeyEvent::VK_SPACE
+      @frame.change_for_html
+    end
+
+    keys = [KeyEvent::VK_1, KeyEvent::VK_2,
+            KeyEvent::VK_3, KeyEvent::VK_4,
+            KeyEvent::VK_5, KeyEvent::VK_6,
+            KeyEvent::VK_7]
+    if keys.index(e.getKeyCode)
+      representations = ["rgb", "hex", "hsl", "hwb", "cmyk", "ncol", "hsv"]
+      @frame.set_representation(representations[keys.index(e.getKeyCode)])
+    end
+
+  end
+end
+
+class MOCFrame < JFrame
+  attr_reader :focus
+  def initialize(focus_mutex)
+    super "colormouse"
+    @focus = true
+    @focus_mutex = focus_mutex
+    @for_html = true
+    @representation = "rgb"
+    ui
+  end
+
+  def ui
+    setUndecorated(true)
+    setSize(500, 300)
+    setDefaultCloseOperation(JFrame::DO_NOTHING_ON_CLOSE)
+    setResizable(false)
+    @label = JLabel.new("OK", SwingConstants.CENTER)
+    @label.setOpaque(true)
+    getContentPane.setBorder(BorderFactory.createEmptyBorder(1, 1, 1, 1))
+    getContentPane.setLayout(BorderLayout.new)
+    getContentPane.add(@label, BorderLayout::CENTER)
+    addWindowFocusListener(MOCWindowFocusListener.new(self))
+    addKeyListener(MOCKeyListener.new(self))
+    setVisible(true)
+  end
+
+  def set_label_text(str)
+    @label.setText(str)
+    pref_size = @label.getPreferredSize
+    setSize(pref_size.getWidth + 20, pref_size.getHeight + 20)
+  end
+
+  def contrasting_v(v)
+    return v + 0.45 if v < 0.5
+    v - 0.45
+  end
+
+  def similar_v(v)
+    return v + 0.05 if v < 0.5
+    v - 0.05
+  end
+
+  def contrasting_color(color)
+    hsv_values = Color.RGBtoHSB(color.getRed, color.getGreen, color.getBlue, nil)
+    v = hsv_values[2]
+    Color.getHSBColor(hsv_values[0], 0.0, contrasting_v(v))
+  end
+
+  def similar_color(color)
+    hsv_values = Color.RGBtoHSB(color.getRed, color.getGreen, color.getBlue, nil)
+    v = hsv_values[2]
+    Color.getHSBColor(hsv_values[0], hsv_values[1], similar_v(v))
+  end
+
+  def set_color(color)
+    scolor = similar_color(color)
+    ocolor = contrasting_color(color)
+    getContentPane.setBackground(scolor)
+    @label.setBackground(color)
+    @label.setForeground(ocolor)
+    set_label_text(MOCColor.new(color.getRed, color.getGreen, color.getBlue).get_color_text(@representation, @for_html))
+  end
+
+  def get_label_text
+    @label.text
+  end
+
+  def focus_lost
+    @focus_mutex.synchronize do
+      @focus = false
+    end
+  end
+
+  def change_for_html
+    @for_html = !@for_html
+  end
+
+  def set_representation(representation)
+    @representation = representation
+  end
+
+  def set_shifted_loc(loc)
+    shift_x = 15
+    shift_y = 0
+    loc.x += shift_x
+    loc.y += shift_y
+    setLocation(loc)
+  end
+end
+
+def copy_to_clipboard(str)
+  Toolkit.getDefaultToolkit.getSystemClipboard.setContents(StringSelection.new(str), nil)
+
+  # For Linux. Use xclip and xsel, as clipboard data may not be persistent after exiting.
+  begin
+    system("printf %s '#{str}' | xclip -selection clipboard")
+  rescue
+  end
+  begin
+    system("printf %s '#{str}' | xsel -b")
+  rescue
+  end
+end
+
+def color_str(color, hex=true)
+  if hex
+    r = color.getRed.to_s(16).rjust(2, "0")
+    g = color.getGreen.to_s(16).rjust(2, "0")
+    b = color.getBlue.to_s(16).rjust(2, "0")
+    "##{r}#{g}#{b}"
+  else
+    "#{color.getRed}, #{color.getGreen}, #{color.getBlue}"
+  end
+end
+
+def run
+  cf = nil
+  focus_mutex = Mutex.new
+  robot = Robot.new
+  focus = true
+  mouse_thread = Thread.new do
+    while focus
+      loc = MouseInfo.getPointerInfo.getLocation
+      col = robot.getPixelColor(loc.x, loc.y)
+      if cf
+        cf.set_color(col)
+        cf.set_shifted_loc(loc)
+        focus_mutex.synchronize do
+          unless cf.focus
+            copy_to_clipboard(cf.get_label_text)
+            cf.dispose
+            focus = false
+          end
+        end
+      end
+      sleep 0.01
+    end
+  end
+  cf = MOCFrame.new(focus_mutex)
+  mouse_thread.join
+end
+
+run
