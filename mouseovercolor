@@ -286,17 +286,6 @@ def copy_to_clipboard(str)
   end
 end
 
-def color_str(color, hex=true)
-  if hex
-    r = color.getRed.to_s(16).rjust(2, "0")
-    g = color.getGreen.to_s(16).rjust(2, "0")
-    b = color.getBlue.to_s(16).rjust(2, "0")
-    "##{r}#{g}#{b}"
-  else
-    "#{color.getRed}, #{color.getGreen}, #{color.getBlue}"
-  end
-end
-
 def run
   cf = nil
   focus_mutex = Mutex.new
