@@ -178,7 +178,6 @@ class MOCKeyListener
       representations = ["rgb", "hex", "hsl", "hwb", "cmyk", "ncol", "hsv"]
       @frame.set_representation(representations[keys.index(e.getKeyCode)])
     end
-
   end
 end
 
