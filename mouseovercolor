@@ -37,6 +37,17 @@ import javax.swing.SwingConstants
 require "thread"
 
 class MOCColor
+  class<< self
+    def hashed_new(r, g, b)
+      @hash = {} unless @hash
+      rgb = [r, g, b]
+      return @hash[rgb] if @hash[rgb]
+      moc = MOCColor.new(r, g, b)
+      @hash[rgb] = moc
+      moc
+    end
+  end
+
   def initialize(r, g, b)
     rgb = [r, g, b]
 
@@ -241,7 +252,7 @@ class MOCFrame < JFrame
     getContentPane.setBackground(scolor)
     @label.setBackground(color)
     @label.setForeground(ocolor)
-    set_label_text(MOCColor.new(color.getRed, color.getGreen, color.getBlue).get_color_text(@representation, @for_html))
+    set_label_text(MOCColor.hashed_new(color.getRed, color.getGreen, color.getBlue).get_color_text(@representation, @for_html))
   end
 
   def get_label_text
